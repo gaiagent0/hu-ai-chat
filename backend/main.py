@@ -1,22 +1,12 @@
-from fastapi import FastAPI, HTTPException, Security
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 from openai import OpenAI
 import os
 
 app = FastAPI(title="Magyar AI Chat")
 
-# --- API Key auth ---
-APP_API_KEY = os.environ["APP_API_KEY"]
-api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
-
-async def verify_api_key(key: str = Security(api_key_header)):
-    if key != APP_API_KEY:
-        raise HTTPException(status_code=403, detail="Forbidden")
-
-# --- CORS ---
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://chat.istvanszechenyi.uk"],
@@ -45,10 +35,10 @@ class ChatRequest(BaseModel):
     messages: list[Message]
     model: str = "qwen-plus"
 
-@app.post("/api/chat", dependencies=[Security(verify_api_key)])
+@app.post("/api/chat")
 async def chat(req: ChatRequest):
     if req.model not in ALLOWED_MODELS:
-        raise HTTPException(status_code=400, detail=f"Model not allowed. Use one of: {ALLOWED_MODELS}")
+        raise HTTPException(status_code=400, detail="Model not allowed")
     try:
         response = client.chat.completions.create(
             model=req.model,
