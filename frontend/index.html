@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Magyar AI Chat</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f1117;color:#e2e8f0;min-height:100vh;display:flex;flex-direction:column}
+    header{background:#161b27;border-bottom:1px solid #2d3748;padding:.9rem 1.5rem;display:flex;align-items:center;gap:.75rem;flex-shrink:0}
+    header h1{font-size:1.1rem;font-weight:700;color:#63b3ed}
+    .badge{background:#1a365d;color:#63b3ed;font-size:.7rem;padding:.2rem .6rem;border-radius:99px}
+    .key-btn{margin-left:auto;background:#2d3748;color:#a0aec0;border:none;border-radius:6px;padding:.35rem .8rem;cursor:pointer;font-size:.8rem}
+    .key-btn:hover{background:#3d4a5c}
+
+    /* chat area */
+    #chat{flex:1;overflow-y:auto;padding:1.5rem;display:flex;flex-direction:column;gap:.75rem;max-width:800px;width:100%;margin:0 auto}
+    .msg{max-width:78%;padding:.75rem 1rem;border-radius:14px;font-size:.92rem;line-height:1.6;white-space:pre-wrap;word-break:break-word}
+    .msg.user{align-self:flex-end;background:#2b6cb0;color:#fff;border-bottom-right-radius:4px}
+    .msg.bot{align-self:flex-start;background:#161b27;color:#e2e8f0;border:1px solid #2d3748;border-bottom-left-radius:4px}
+    .msg.thinking{opacity:.5;font-style:italic}
+
+    /* input bar */
+    .input-bar{background:#161b27;border-top:1px solid #2d3748;padding:.9rem 1.5rem;flex-shrink:0}
+    .input-inner{display:flex;gap:.6rem;max-width:800px;margin:0 auto}
+    textarea#msg-input{flex:1;background:#0f1117;border:1px solid #2d3748;border-radius:10px;padding:.65rem 1rem;color:#e2e8f0;font-size:.92rem;outline:none;font-family:inherit;resize:none;line-height:1.5;max-height:140px;overflow-y:auto}
+    textarea#msg-input:focus{border-color:#63b3ed}
+    #send-btn{background:#2b6cb0;color:#fff;border:none;border-radius:10px;padding:0 1.1rem;cursor:pointer;font-size:1.2rem;flex-shrink:0}
+    #send-btn:hover{background:#2c5282}
+    #send-btn:disabled{background:#2d3748;cursor:not-allowed}
+
+    /* model selector */
+    .model-bar{display:flex;align-items:center;gap:.5rem;max-width:800px;margin:.5rem auto 0;font-size:.78rem;color:#718096}
+    select#model-select{background:#0f1117;border:1px solid #2d3748;border-radius:6px;color:#a0aec0;padding:.25rem .5rem;font-size:.78rem;cursor:pointer;outline:none}
+    select#model-select:focus{border-color:#63b3ed}
+
+    /* API key overlay */
+    #key-overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;z-index:100}
+    #key-overlay.hidden{display:none}
+    .key-box{background:#161b27;border:1px solid #2d3748;border-radius:16px;padding:2rem;width:100%;max-width:420px;display:flex;flex-direction:column;gap:1rem}
+    .key-box h2{color:#63b3ed;font-size:1.1rem;font-weight:600}
+    .key-box p{color:#718096;font-size:.85rem;line-height:1.55}
+    .key-box input{background:#0f1117;border:1px solid #2d3748;border-radius:8px;padding:.7rem 1rem;color:#e2e8f0;font-size:.95rem;outline:none;font-family:inherit}
+    .key-box input:focus{border-color:#63b3ed}
+    .key-box button{background:#2b6cb0;color:#fff;border:none;border-radius:8px;padding:.75rem;cursor:pointer;font-size:.95rem;font-weight:600}
+    .key-box button:hover{background:#2c5282}
+    .key-err{color:#f56565;font-size:.82rem;display:none}
+  </style>
+</head>
+<body>
+
+<!-- API key overlay -->
+<div id="key-overlay">
+  <div class="key-box">
+    <h2>🔑 API kulcs szükséges</h2>
+    <p>A Magyar AI Chat védett. Add meg az <code>APP_API_KEY</code> értékét — a böngésző elmenti, legközelebb nem kell újra begépelni.</p>
+    <input type="password" id="key-input" placeholder="APP_API_KEY értéke..." autocomplete="off">
+    <div class="key-err" id="key-err">Hibás kulcs, próbáld újra.</div>
+    <button onclick="submitKey()">Belépés</button>
+  </div>
+</div>
+
+<header>
+  <span>🤖</span>
+  <h1>Magyar AI Chat</h1>
+  <span class="badge">Qwen / DashScope</span>
+  <button class="key-btn" onclick="resetKey()">🔑 Kulcs</button>
+</header>
+
+<div id="chat">
+  <div class="msg bot">Szia! Magyar AI asszisztens vagyok. Miben segíthetek? 😊</div>
+</div>
+
+<div class="input-bar">
+  <div class="model-bar">
+    <span>Model:</span>
+    <select id="model-select">
+      <option value="qwen-plus">qwen-plus</option>
+      <option value="qwen-turbo">qwen-turbo</option>
+      <option value="qwen-max">qwen-max</option>
+    </select>
+  </div>
+  <div class="input-inner">
+    <textarea id="msg-input" rows="1" placeholder="Írj üzenetet... (Enter = küld, Shift+Enter = új sor)"></textarea>
+    <button id="send-btn" onclick="sendMsg()">&#10148;</button>
+  </div>
+</div>
+
+<script>
+const LS_KEY = 'hu_ai_chat_api_key';
+let API_KEY = localStorage.getItem(LS_KEY) || '';
+let history = [];
+let busy = false;
+
+function authHeaders() {
+  return { 'Content-Type': 'application/json', 'X-API-Key': API_KEY };
+}
+
+function showOverlay(err) {
+  document.getElementById('key-overlay').classList.remove('hidden');
+  document.getElementById('key-err').style.display = err ? 'block' : 'none';
+  document.getElementById('key-input').value = '';
+  setTimeout(() => document.getElementById('key-input').focus(), 50);
+}
+
+function hideOverlay() {
+  document.getElementById('key-overlay').classList.add('hidden');
+}
+
+async function submitKey() {
+  const val = document.getElementById('key-input').value.trim();
+  if (!val) return;
+  // Verify with a test call
+  try {
+    const r = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': val },
+      body: JSON.stringify({ messages: [{ role: 'user', content: 'hi' }], model: 'qwen-turbo' })
+    });
+    if (r.status === 403) { showOverlay(true); return; }
+    API_KEY = val;
+    localStorage.setItem(LS_KEY, val);
+    hideOverlay();
+  } catch(e) { showOverlay(true); }
+}
+
+function resetKey() {
+  localStorage.removeItem(LS_KEY);
+  API_KEY = '';
+  showOverlay(false);
+}
+
+document.getElementById('key-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') submitKey();
+});
+
+// Chat
+const chat = document.getElementById('chat');
+
+function addMsg(role, text, extra) {
+  const d = document.createElement('div');
+  d.className = 'msg ' + (extra || role);
+  d.textContent = text;
+  chat.appendChild(d);
+  chat.scrollTop = chat.scrollHeight;
+  return d;
+}
+
+async function sendMsg() {
+  if (busy) return;
+  const inp = document.getElementById('msg-input');
+  const model = document.getElementById('model-select').value;
+  const text = inp.value.trim();
+  if (!text) return;
+  inp.value = ''; inp.style.height = '';
+  document.getElementById('send-btn').disabled = true;
+  busy = true;
+
+  history.push({ role: 'user', content: text });
+  addMsg('user', text);
+  const thinking = addMsg('bot', 'Gondolkodom…', 'bot thinking');
+
+  try {
+    const r = await fetch('/api/chat', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ messages: history, model })
+    });
+    if (r.status === 403) { thinking.remove(); history.pop(); showOverlay(false); }
+    else {
+      const d = await r.json();
+      const reply = d.reply || 'Sajnálom, nem tudtam válaszolni.';
+      thinking.remove();
+      history.push({ role: 'assistant', content: reply });
+      addMsg('bot', reply);
+      // Keep history max 20 messages
+      if (history.length > 20) history = history.slice(-20);
+    }
+  } catch(e) {
+    thinking.remove();
+    addMsg('bot', 'Kapcsolódási hiba: ' + e.message);
+  }
+
+  busy = false;
+  document.getElementById('send-btn').disabled = false;
+  inp.focus();
+}
+
+// Enter to send, Shift+Enter for newline
+document.getElementById('msg-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); }
+});
+
+// Auto-resize textarea
+document.getElementById('msg-input').addEventListener('input', function() {
+  this.style.height = '';
+  this.style.height = Math.min(this.scrollHeight, 140) + 'px';
+});
+
+// Startup
+if (!API_KEY) showOverlay(false);
+</script>
+</body>
+</html>
