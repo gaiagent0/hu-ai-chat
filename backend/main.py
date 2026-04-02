@@ -51,7 +51,7 @@ async def chat(req: ChatRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/health")
+@app.get("/api/health")
 async def health():
     return {"status": "ok"}
 
