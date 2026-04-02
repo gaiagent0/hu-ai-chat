@@ -1,6 +1,5 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from openai import OpenAI
 import os
@@ -56,4 +55,3 @@ async def chat(req: ChatRequest):
 async def health():
     return {"status": "ok"}
 
-app.mount("/", StaticFiles(directory="../frontend", html=True), name="frontend")
